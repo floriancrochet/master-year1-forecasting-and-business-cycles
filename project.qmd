@@ -1,0 +1,1079 @@
+---
+title: "Dossier"
+author: "Pierre et Florian"
+format:
+  html:
+    toc: true
+    toc-title: Sommaire
+    code-fold: true
+    echo: true
+    eval: true
+    incremental: true
+  pdf:
+    toc: true
+    toc-title: Sommaire
+    echo: true
+    eval: true
+  revealjs:
+    incremental: true
+---
+
+Choix 2 : Série CVS ou non saisonnière mensuelle
+
+```{r}
+# Importation des librairies
+
+library(tidyquant)
+library(tidyverse)
+library(tsoutliers)
+library(forecast)
+library(RJDemetra)
+library(tseries)
+library(urca)
+library(smooth)
+library(gridExtra)
+```
+
+# 1. Analyse préliminaire
+
+## a. Présentation et caractérisation de la série étudiée : source, définition, graphique
+
+```{r}
+# Importation des données pour l'estimation
+
+cac40 <- tq_get(
+  "^FCHI",
+  from = "2000-01-01", to = "2018-12-31", periodicity = "monthly"
+) |>
+  mutate(
+    date = date %m+% months(1)
+  ) |>
+  select(
+    date, close
+  ) |>
+  rename(
+    cloture = close
+  )
+
+head(cac40, n = 20)
+```
+
+```{r}
+# Importation des données pour la prévision
+
+cac40_prev <- tq_get(
+  "^FCHI",
+  from = "2019-01-01", to = "2019-12-31", periodicity = "monthly"
+) |>
+  mutate(
+    date = date %m+% months(1)
+  ) |>
+  select(
+    date, close
+  ) |>
+  rename(
+    cloture = close
+  )
+
+head(cac40, n = 20)
+```
+
+La série de données utilisée dans cette analyse provient du site Yahoo Finance (https://finance.yahoo.com/), une plateforme de référence pour les données financières et boursières.
+
+Elle concerne l’indice CAC 40, qui regroupe les 40 plus grandes entreprises françaises cotées à la Bourse de Paris. Cet indice est un indicateur clé de la performance des marchés financiers en France.
+
+La série temporelle mensuelle commence en janvier 2000 et se termine en décembre 2019, couvrant ainsi une période de 20 ans.
+
+```{r}
+# Classe time series
+
+cac40_ts <- ts(
+  data = cac40$cloture, 
+  start = c(2000, 01), 
+  frequency = 12
+)
+
+cac40_prev_ts <- ts(
+  data = cac40_prev$cloture, 
+  start = c(2019, 01), 
+  frequency = 12
+)
+
+plot.ts(cac40_ts)
+plot.ts(cac40_prev_ts)
+```
+
+## b. Détection des points atypiques, détermination du caractère multiplicatif ou additif du schéma et vérification de la saisonnalité
+
+### 1. Détection des points atypiques et structure de la série
+
+```{r}
+# Méthode X13 avec seuil de détection des outliers fixé à 4
+# regx13_1 <- regarima_x13(
+#   cac40_ts, 
+#   spec = "RG5c"
+# )
+```
+
+```{r}
+# Méthode X13
+
+specification_1 <- regarima_spec_x13(
+  spec = "RG5c",
+  outlier.usedefcv = FALSE,
+  outlier.cv = 3  # Seuil de détection des outliers fixé à 3
+                  # pour augmenter la sensibilité de l'identification
+)
+
+regx13_1 <- regarima(cac40_ts, spec = specification_1)
+summary(regx13_1)
+
+s_transform(regx13_1)
+# plot(regx13_1)
+```
+
+La série a nécessité une transformation logarithmique, indiquant une structure multiplicative. Trois points atypiques significatifs au seuil de 1 % ont été détectés : un AO en septembre 2002, un TC en septembre 2001 et un LS en janvier 2008.
+
+```{r}
+# Série corrigée des points atypiques et transformée en logarithme.
+
+ajustement <- regx13_1[["model"]][["effects"]]
+log_cac40_ts <- ajustement[, "y_lin"]
+log_cac40_prev_ts <- log(cac40_prev_ts)
+
+par(mfrow = c(1, 2))
+plot(log_cac40_ts, main = "Série corrigée")
+plot(log(cac40_ts), main = "Série initiale transformée en logarithme")
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# Méthode X13
+
+specification_2 <- regarima_spec_x13(
+  spec = "RG5c",
+  outlier.usedefcv = FALSE,
+  outlier.cv = 3
+)
+
+regx13_2 <- regarima(log_cac40_ts, spec = specification_2)
+summary(regx13_2)
+
+s_transform(regx13_2)
+# plot(regx13_2)
+```
+
+Aucun point atypique n'a été détecté et aucune transformation logarithmique n'a été nécessaire. Nous conservons donc la série corrigée log_cac40_ts.
+
+```{r}
+# Autre méthode de détection des points atypiques
+
+# Première détection
+tso(cac40_ts)
+ajustement_tso_1 <- tso(cac40_ts)
+serie_ajustee_tso_1 <- ajustement_tso_1$yadj
+
+# Seconde détection
+tso(serie_ajustee_tso_1)
+ajustement_tso_2 <- tso(serie_ajustee_tso_1)
+serie_ajustee_tso_2 <- ajustement_tso_2$yadj
+
+# Troisième détection
+tso(serie_ajustee_tso_2)
+
+par(mfrow = c(1, 2))
+plot(serie_ajustee_tso_2)
+plot(cac40_ts)
+par(mfrow = c(1, 1))
+```
+
+On retrouve les mêmes points atypiques.
+
+### 2. Saisonnalité
+
+```{r}
+# Seasonal dummies
+library(TSA)
+library(seastests)
+sd <- seasdum(cac40_ts)
+show(sd)
+```
+
+Le test des variables muettes saisonnières (seasdum) a été appliqué à la série temporelle cac40_ts afin de détecter la présence d’une composante saisonnière. La statistique de test obtenue est de 1.55, avec une p-value associée de 0.1155659. Cette p-value étant supérieure au seuil de signification de 5 %, on ne rejette pas l’hypothèse nulle d’absence de saisonnalité. Cela signifie qu’il n’existe pas de preuve statistique suffisante pour affirmer que la série CAC 40 présente une variation régulière et récurrente selon les périodes.
+
+```{r}
+# Webel-Ollech test
+wot <- combined_test(cac40_ts)
+show(wot)
+```
+
+Le test combiné de type WO (Webel-Ollech) a été réalisé sur la série cac40_ts afin de détecter d’éventuels effets saisonniers ou calendaires. La statistique de test obtenue est 0, ce qui indique l'absence d’effet saisonnier détecté par le test. Les p-values associées aux différents sous-tests (1, 1 et 0.1129931) sont toutes bien supérieures au seuil classique de 5 %, ce qui signifie que l’on ne rejette pas l’hypothèse nulle d’absence de saisonnalité. En conclusion, le test ne met pas en évidence de structure saisonnière ou calendaire significative dans la série analysée.
+
+## c. Vérifier la stationnarité de la série I(0) ou I(1)
+
+### 1. Tests
+
+#### 1. Test de Dickey-Fuller Augmenté (ADF)
+
+```{r}
+# Test de Dickey-Fuller augmenté
+adf_test <- ur.df(
+  log_cac40_ts,
+  type = "drift",
+  selectlags = "AIC"
+)
+summary(adf_test)
+```
+
+Le test de Dickey-Fuller Augmenté (ADF) a été appliqué à la série logarithmique du CAC40 pour évaluer la présence d’une racine unitaire, indicatrice de non-stationnarité. La statistique de test obtenue est de -2.1351, tandis que les valeurs critiques aux seuils de 1%, 5% et 10% sont respectivement -3.46, -2.88 et -2.57. Étant donné que la statistique est supérieure à ces seuils, nous ne pouvons pas rejeter l’hypothèse nulle de non-stationnarité. Ce résultat suggère donc que la série n’est pas stationnaire selon ce test.
+
+#### 2. Test de Philips et Perron (PP)
+
+```{r}
+# Test de Philips et Perron
+pp_test <- ur.pp(
+  log_cac40_ts,
+  type = "Z-tau",
+  model = "constant",
+  lags = "long"
+)
+summary(pp_test)
+```
+
+Le test de Phillips-Perron (PP), qui vise également à détecter une racine unitaire tout en étant plus robuste à l’hétéroscédasticité, a fourni une statistique de test Z-tau de -2.1828. Cette valeur reste supérieure aux valeurs critiques à 1%, 5% et 10%, qui sont respectivement -3.4605, -2.8743 et -2.5735. Ainsi, l’hypothèse nulle de racine unitaire n’est pas rejetée, ce qui confirme le résultat du test ADF et indique également une non-stationnarité de la série.
+
+#### 3. Test de KPSS
+
+```{r}
+# Test de KPSS
+kpss_test <- ur.kpss(
+  log_cac40_ts,
+  type = "mu",
+  lags = "long"
+)
+summary(kpss_test)
+```
+
+Le test KPSS fonctionne à l’inverse des deux précédents en testant l’hypothèse nulle de stationnarité. Pour notre série, la statistique de test est de 0.3004, inférieure aux valeurs critiques à 10%, 5%, 2.5% et 1% (0.347, 0.463, 0.574 et 0.739 respectivement). Dans ce cas, on ne rejette pas l’hypothèse nulle de stationnarité, ce qui contraste avec les conclusions des tests ADF et PP.
+
+#### 4. Conclusion
+
+Les résultats des tests unitaires sont contradictoires. Alors que les tests ADF et PP ne rejettent pas l’hypothèse de non-stationnarité, le test KPSS n’invalide pas l’hypothèse de stationnarité. Cette divergence peut être le signe que la série est proche d’un comportement de racine unitaire ou que certains effets limites (comme un bruit élevé ou un choix de modèle inadapté) faussent les résultats. Face à cette divergence, il est pertinent de différencier la série et de réévaluer sa stationnarité.
+
+### 2. Différenciation de la série
+
+```{r}
+# 1. Différencier la série
+diff_log_cac40_ts <- diff(log_cac40_ts)
+ts.plot(diff_log_cac40_ts)
+```
+
+Afin de corriger la non-stationnarité détectée par les tests ADF et PP, nous avons appliqué une différenciation première à la série logarithmique du CAC40. Cette transformation permet de stabiliser la moyenne de la série et d’atténuer les effets de tendance.
+
+### 3. Tester la stationnarité après différenciation
+
+#### 1. Test de Dickey-Fuller Augmenté (ADF)
+
+```{r}
+# Test de Dickey-Fuller augmenté
+adf_test <- ur.df(
+  diff_log_cac40_ts,
+  type = "none",
+  selectlags = "AIC"
+)
+summary(adf_test)
+```
+
+Après différenciation, la statistique de test ADF est de -10.759, ce qui est largement inférieur aux valeurs critiques à 1%, 5% et 10% (-2.58, -1.95, -1.62). Ce résultat très significatif nous permet de rejeter fermement l’hypothèse nulle de non-stationnarité. Ainsi, la série différenciée est stationnaire selon le test ADF.
+
+#### 2. Test de Philips et Perron (PP)
+
+```{r}
+# Test de Philips et Perron
+pp_test <- ur.pp(
+  diff_log_cac40_ts,
+  type = "Z-tau",
+  model = "constant",
+  lags = "short"
+)
+summary(pp_test)
+```
+
+Le test PP appliqué à la série différenciée donne une statistique Z-tau de -13.1645, une valeur également très inférieure aux seuils critiques de -3.4606, -2.8744 et -2.5736. Cela confirme que l’hypothèse de racine unitaire est nettement rejetée, et que la stationnarité est bien atteinte après transformation.
+
+#### 3. Test de KPSS
+
+```{r}
+# Test de KPSS
+kpss_test <- ur.kpss(
+  diff_log_cac40_ts,
+  type = "mu"
+)
+summary(kpss_test)
+```
+
+Le test KPSS retourne une statistique de 0.1174, largement en dessous des seuils critiques à 10%, 5%, 2.5% et 1% (0.347, 0.463, 0.574, 0.739). On ne rejette donc pas l’hypothèse de stationnarité, ce qui vient confirmer les résultats des tests ADF et PP.
+
+#### 4. Conclusion
+
+Les trois tests convergent désormais vers une même conclusion : la série devient stationnaire après différenciation. Les tests ADF et PP rejettent l’hypothèse de racine unitaire, tandis que le test KPSS valide la stationnarité. Par conséquent, la transformation appliquée permet de rendre la série adaptée à des analyses économétriques plus avancées.
+
+### 4. Corrélogrammes
+
+```{r}
+# Corrélogramme
+
+acf_graph1 <- log_cac40_ts |>
+  ggAcf() +
+  ggtitle("Corrélogramme sur la série en niveau") +
+  theme_bw()
+
+acf_graph2 <- diff_log_cac40_ts |>
+  ggAcf() +
+  ggtitle("Corrélogramme sur la série en différence première") +
+  theme_bw()
+
+grid.arrange(acf_graph1, acf_graph2, ncol = 2)
+```
+
+Avant différenciation, la série, non stationnaire (intégrée d'ordre 1, I(1)), présente des autocorrélations significatives aux premiers retards, ce qui suggère la présence d'une racine unitaire et confirme l'absence de stationnarité. Après différenciation, l'ACF révèle une légère autocorrélation aux premier et troisième retards, tandis que les autres retards présentent des autocorrélations non significatives, indiquant que la série est devenue stationnaire (I(0)). Ainsi, bien que quelques autocorrélations résiduelles subsistent aux premiers retards, l'absence d'autocorrélations significatives aux retards plus élevés confirme que la différenciation a permis d'éliminer la non-stationnarité, rendant la série appropriée pour des analyses économétriques.
+
+## d. Statistiques descriptives (moyenne, écart-type, skewness, kurtosis normalité, box-plot …).
+
+### 1. Statistiques
+
+```{r}
+library(fBasics)
+
+stats <- basicStats(log_cac40_ts)
+show(stats)
+```
+
+### 2. Normalité
+
+```{r}
+shapiro.test(log_cac40_ts)
+```
+
+La p-value de 4.259e-05, très inférieure au seuil de 5 %, indique que l'hypothèse nulle de normalité est rejetée au seuil de risque de 5 %. Cela signifie que les données ne suivent pas une distribution normale. Ainsi, la série du CAC 40 n'est pas normalement distribuée d'après le test de Shapiro-Wilk.
+
+### 3. Boîte à moustache
+
+```{r}
+boxplot(
+  log_cac40_ts,
+  main = "Boîte à moustaches de la série",
+  ylab = "Valeurs",
+  col = "lightblue"
+)
+```
+
+```{r}
+log_cac40_ts |>
+  as.numeric() |>
+  tibble(valeurs = _) |>
+  ggplot(aes(x = valeurs, y = "")) +
+  geom_violin(fill = "white", color = "black") +
+  geom_boxplot(
+    width = 0.5, fill = "grey", outlier.color = "red",
+    outlier.size = 2, staplewidth = 0.4
+  ) +
+  labs(
+    title = "Visualisation de la distribution des valeurs de log(CAC 40)",
+    x = "Valeurs",
+    y = "Distribution"
+  ) +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    axis.text.x = element_text(size = 12)
+  )
+```
+
+# 2. Estimation des modèles linéaires de janvier 2000 à décembre 2018
+
+a.  Estimer et commenter les paramètres des modèles AR(1), AR(p) et ARIMA(p,d,q) et de la méthode LED Holt-Winters, ADAM ETS, ADAM ETS ARIMA, SSARIMA et CES
+b.  Paramètres : présenter sous forme de tableau les paramètres des modèles précédents. Déterminer et commenter le meilleur modèle d’après les critères AIC et AICc
+
+```{r}
+# Fonction pour afficher 4 graphiques
+
+plot4 <- function(modele) {
+  par(mfrow = c(2, 2))
+  plot(modele)
+  par(mfrow = c(1, 1))
+}
+```
+
+## 2.1. Modèle ARIMA
+
+### 2.1.1. Estimation du modèle
+
+```{r}
+modele_arima <- auto.arima(log_cac40_ts)
+
+summary(modele_arima)
+
+j <- ncol(modele_arima$var.coef)
+tstat <- matrix(nrow=j, ncol=1)
+for(i in 1:j)
+{
+  tstat[i,1] <- modele_arima$coef[i]/sqrt(modele_arima$var.coef[i,i])
+}
+tstat
+
+# Graphique des valeurs ajustées
+plot(modele_arima$fitted)
+```
+
+## 2.2. Méthode du lissage Exponentiel Double (LED) de Holt-Winters
+
+### 2.2.1. Estimation du modèle
+
+```{r}
+modele_hw <- HoltWinters(
+  log_cac40_ts, 
+  gamma = FALSE
+) # LED : niveau + tendance (sans saisonnalité)
+
+modele_hw
+
+# Graphique de la série et des valeurs ajustées
+plot(modele_hw)
+
+# Graphique des valeurs ajustées
+plot(modele_hw$fitted[,1])
+```
+
+### 2.2.2. AIC et AICc
+
+```{r}
+# Nombre d'observations
+n <- length(modele_hw$fitted[,1])
+
+# Somme des carrés des résidus
+RSS <- sum(residuals(modele_hw)^2)
+
+# Nombre de paramètres estimés
+k <- 2
+
+# AIC manuel
+aic_hw <- n * log(RSS / n) + 2 * k
+
+# AICc manuel
+aicc_hw <- aic_hw + (2 * k * (k + 1)) / (n - k - 1)
+
+cat("AIC du modèle Holt-Winters :", round(aic_hw, 2), "\n")
+cat("AICc du modèle Holt-Winters :", round(aicc_hw, 2), "\n")
+```
+
+## 2.3. Modèle ADAM ETS (Error-Trend-Seasonal)
+
+### 2.3.1. Estimation du modèle
+
+```{r}
+modele_adam_ets <- auto.adam(
+  log_cac40_ts,                     # Série du CAC 40 en log-niveau
+  model = "ZZN",                    # Modèle ETS-ARIMA combiné
+                                    # sans saisonnalité pour ETS
+  lags = c(1, 12),                  # Lags pour ETS
+                                    # (1) Lag pour le niveau/tendance
+                                    # (12) Lags saisonniers
+  orders = list(                    # Pas de modèle ARIMA dans le modèle global
+    ar = c(0),
+    i  = c(0),
+    ma = c(0)
+  ),
+  select = TRUE                     # Sélection du modèle global optimal
+)
+
+summary(modele_adam_ets)
+
+show(modele_adam_ets)
+
+# Graphiques des résultats du modèles
+plot4(modele_adam_ets)
+
+# Graphique des valeurs ajustées
+plot(modele_adam_ets$fitted)
+```
+
+### 2.3.2. AIC et AICc
+
+```{r}
+aic_adam_ets <- AIC(modele_adam_ets)
+cat("AIC du modèle ADAM ETS :", round(aic_adam_ets, 2), "\n")
+
+aicc_adam_ets <- AICc(modele_adam_ets)
+cat("AICc du modèle ADAM ETS :", round(aicc_adam_ets, 2), "\n")
+```
+
+## 2.4. Modèle ADAM ETS-ARIMA (modèle hybride)
+
+### 2.4.1. Estimation du modèle
+
+```{r}
+modele_adam_ets_arima <- auto.adam(
+  log_cac40_ts,                     # Série du CAC 40 en log-niveau
+  model = "ZZN",                    # Modèle ETS-ARIMA combiné
+                                    # sans saisonnalité pour ETS
+  lags = c(1, 12),                  # Lags pour ETS et ARIMA
+                                    # (1) Lag pour le niveau/tendance d'ETS
+                                    # (12) Lags saisonniers pour ARIMA
+  orders = list(
+    ar = c(3, 3),                   # (3) Ordre maximal pour AR non saisonnier
+                                    # (3) Ordre maximal pour AR saisonnier
+    i  = c(2, 1),                   # (2) Ordre maximal pour différenciation non saisonnière
+                                    # (1) Ordre maximal pour différenciation saisonnière
+    ma = c(3, 3),                   # (3) Ordre maximal pour MA non saisonnier
+                                    # (3) Ordre maximal pour MA saisonnier
+    select = TRUE                   # Sélection automatique du sous_modèle optimal
+  ),
+  select = TRUE,                    # Sélection automatique du modèle global optimal
+  bounds = "admissible"             # Bornes admissibles appliquées aux paramètres
+                                    # pour assurer la validité du modèle
+)
+
+summary(modele_adam_ets_arima)
+
+show(modele_adam_ets_arima)
+
+# Graphiques des résultats du modèles
+plot4(modele_adam_ets_arima)
+
+# Graphique des valeurs ajustées
+plot(modele_adam_ets_arima$fitted)
+```
+
+### 2.4.2. AIC et AICc
+
+```{r}
+aic_adam_ets_arima <- AIC(modele_adam_ets_arima)
+cat("AIC du modèle ADAM ETS+ARIMA :", round(aic_adam_ets_arima, 2), "\n")
+
+aicc_adam_ets_arima <- AICc(modele_adam_ets_arima)
+cat("AICc du modèle ADAM ETS+ARIMA :", round(aicc_adam_ets_arima, 2), "\n")
+```
+
+## 2.5. Modèle SSARIMA (State Space ARIMA)
+
+### 2.5.1. Estimation du modèle
+
+```{r}
+modele_ssarima <- auto.ssarima(
+  log_cac40_ts,                     # Série du CAC 40 en log-niveau
+  lags = c(1, 12),                  # (1) Lag pour le niveau/tendance
+                                    # (12) Lag pour la saisonnalité mensuelle
+  orders = list(
+    ar = c(3, 3),                   # (3) Ordre maximal pour AR non saisonnier
+                                    # (3) Ordre maximal pour AR saisonnier
+    i  = c(2, 1),                   # (2) Ordre maximal pour différenciation non saisonnière
+                                    # (1) Ordre maximal pour différenciation saisonnière
+    ma = c(3, 3),                   # (3) Ordre maximal pour MA non saisonnier
+                                    # (3) Ordre maximal pour MA saisonnier
+    select = TRUE                   # Sélection automatique du meilleur sous-modèle (critères AICc/BIC)
+  )
+)
+
+
+summary(modele_ssarima)
+
+show(modele_ssarima)
+
+# Graphiques des résultats du modèles
+plot4(modele_ssarima)
+
+# Graphique des valeurs ajustées
+plot(modele_ssarima$fitted)
+```
+
+### 2.5.2. AIC et AICc
+
+```{r}
+aic_ssarima <- AIC(modele_ssarima)
+cat("AIC du modèle SSARIMA :", round(aic_ssarima, 2), "\n")
+
+aicc_ssarima <- AICc(modele_ssarima)
+cat("AICc du modèle SSARIMA :", round(aicc_ssarima, 2), "\n")
+```
+
+# 3. Prévision linéaire sur l'année 2019
+
+```{r}
+# Prévision à 12 mois
+h <- 12
+```
+
+## 3.1. Modèle ARIMA
+
+```{r}
+# Prévision du modèle ARIMA
+
+# Prévision à 12 mois avec intervalle de confiance à 80 % et 95 %
+prevision_arima <- forecast(modele_arima, h = h)
+
+show(prevision_arima)
+
+plot(prevision_arima)
+
+# Informations sur le modèle ajusté
+modele_prevision_arima <- prevision_arima$model
+show(modele_prevision_arima)
+
+# Prévision
+prev_arima <- prevision_arima$mean
+show(prev_arima)
+```
+
+## 3.2. Méthode du lissage Exponentiel Double (LED) de Holt-Winters
+
+```{r}
+# Prévision du modèle LED Holt-Winters
+
+# Prévision à 12 mois avec intervalle de confiance à 80 % et 95 %
+prevision_hw <- forecast(
+  modele_hw, 
+  h = h
+)
+
+show(prevision_hw)
+
+plot(prevision_hw)
+
+# Informations sur le modèle ajusté
+modele_prevision_hw <- prevision_hw$model
+show(modele_prevision_hw)
+
+# Prévision
+prev_hw <- prevision_hw$mean
+show(prev_hw)
+```
+
+## 3.3. Modèle ADAM ETS (Error-Trend-Seasonal)
+
+```{r}
+# Prévision du modèle ADAM ETS
+
+# Prévision à 12 mois avec intervalle de confiance à 90 %
+prevision_adam_ets <- forecast(
+  modele_adam_ets, 
+  h = h, 
+  level = 0.90
+)
+
+show(prevision_adam_ets)
+
+plot(prevision_adam_ets, main = "")
+
+# Informations sur le modèle ajusté
+modele_prevision_adam_ets <- prevision_adam_ets$model
+show(modele_prevision_adam_ets)
+
+# Prévision
+prev_adam_ets <- prevision_adam_ets$mean
+show(prev_adam_ets)
+```
+
+## 3.4. Modèle ADAM ETS-ARIMA (modèle hybride)
+
+```{r}
+# Prévision du modèle ADAM ETS-ARIMA
+
+# Prévision à 12 mois avec intervalle de confiance à 90 %
+prevision_adam_ets_arima <- forecast(
+  modele_adam_ets_arima, 
+  h = h, 
+  level = 0.90
+)
+
+show(prevision_adam_ets_arima)
+
+plot(prevision_adam_ets_arima)
+
+# Informations sur le modèle ajusté
+modele_prevision_adam_ets_arima <- prevision_adam_ets_arima$model
+show(modele_prevision_adam_ets_arima)
+
+# Prévision
+prev_adam_ets_arima <- prevision_adam_ets_arima$mean
+show(prev_adam_ets_arima)
+```
+
+## 3.5. Modèle SSARIMA (State Space ARIMA)
+
+```{r}
+# Prévision du modèle SSARIMA
+
+# Prévision à 12 mois avec intervalle de confiance à 90 %
+prevision_ssarima <- forecast(modele_ssarima, h = h, level = 0.90)
+
+show(prevision_ssarima)
+
+plot(prevision_ssarima)
+
+# Informations sur le modèle ajusté
+modele_prevision_ssarima <- prevision_ssarima$model
+show(modele_prevision_ssarima)
+
+# Prévision
+prev_ssarima <- prevision_ssarima$mean
+show(prev_ssarima)
+```
+
+## 3.6. Résultats
+
+```{r}
+# Prévisions et série réalisée
+
+df_previsions_2019 <- tibble(
+  Date           = month(
+    cac40_prev$date, label = TRUE, locale = "fr_FR.UTF-8"
+  ),
+  ARIMA          = as.numeric(prev_arima),
+  Holt_Winters   = as.numeric(prev_hw),
+  ADAM_ETS       = as.numeric(prev_adam_ets),
+  ADAM_ETS_ARIMA = as.numeric(prev_adam_ets_arima),
+  SSARIMA        = as.numeric(prev_ssarima),
+  Realisation    = as.numeric(log_cac40_prev_ts)
+)
+
+df_previsions_2019
+
+# View(df_previsions_2019)
+```
+
+# 4. Représentation graphique de l’évolution des prévisions des différents modèles
+
+```{r}
+# Vecteur couleurs
+couleurs_types <- c(
+  "ARIMA" = "#277DA1",
+  "ADAM_ETS" = "#E76F51",
+  "ADAM_ETS_ARIMA" = "#9D4EDD",
+  "Holt_Winters" = "#2A9D8F",
+  "SSARIMA" = "#F72585",
+  "Realisation" = "black"
+)
+
+# Graphique des prévisions comparées à la série réalisée
+df_previsions_2019 |> 
+  pivot_longer(
+    cols = -Date, 
+    names_to = "Type", 
+    values_to = "Prediction"
+  ) |> 
+  ggplot() +
+  aes(
+    x = Date, 
+    y = Prediction, 
+    color = Type,
+    group = Type
+  ) +
+  geom_line(size = 1.2) +
+  labs(
+    x = "Date", 
+    y = "Valeur prédite"
+  ) +
+  scale_color_manual(values = couleurs_types) +
+  theme_bw(base_size = 13) +
+  theme(legend.title = element_blank())
+```
+
+# 5. Qualité de prévision
+
+## 5.1. Modèle naïf
+
+```{r}
+# Prévision naïve : dernière valeur de la série d'apprentissage (benchmark)
+
+# Prévision à 12 mois avec intervalle de confiance à 80 % et 95 %
+prevision_naive <- naive(log_cac40_ts, h = h)
+
+show(prevision_naive)
+
+plot(prevision_naive)
+
+# Informations sur le modèle ajusté
+modele_prevision_naive <- prevision_naive$model
+show(modele_prevision_naive)
+
+# Prévision
+prev_naive <- prevision_naive$mean
+show(prev_naive)
+```
+
+## 5.2. MSE et R2oo
+
+```{r}
+# Erreurs de prévision
+df_erreurs_prevision <- tibble(
+  Date           = month(
+    cac40_prev$date, label = TRUE, locale = "fr_FR.UTF-8"
+  ),
+  Naive          = prev_naive - log_cac40_prev_ts,
+  ARIMA          = prev_arima  - log_cac40_prev_ts,
+  Holt_Winters   = prev_hw  - log_cac40_prev_ts,
+  ADAM_ETS       = prev_adam_ets  - log_cac40_prev_ts,
+  ADAM_ETS_ARIMA = prev_adam_ets_arima  - log_cac40_prev_ts,
+  SSARIMA        = prev_ssarima - log_cac40_prev_ts
+)
+
+df_erreurs_prevision
+```
+
+```{r}
+# MSE
+df_mse <- tibble(
+  Critere        = "MSE",
+  Naive          = mean(df_erreurs_prevision$Naive^2),
+  ARIMA          = mean(df_erreurs_prevision$ARIMA^2),
+  Holt_Winters   = mean(df_erreurs_prevision$Holt_Winters^2),
+  ADAM_ETS       = mean(df_erreurs_prevision$ADAM_ETS^2),
+  ADAM_ETS_ARIMA = mean(df_erreurs_prevision$ADAM_ETS_ARIMA^2),
+  SSARIMA        = mean(df_erreurs_prevision$SSARIMA^2)
+)
+
+
+# R2 OOS par rapport à la prévision naïve
+df_r2_modele_naif <- tibble(
+  Critere        = "R2_OOS modèle naïf",
+  Naive          = NA,
+  ARIMA          = 1 - (df_mse$ARIMA / df_mse$Naive),
+  Holt_Winters   = 1 - (df_mse$Holt_Winters / df_mse$Naive),
+  ADAM_ETS       = 1 - (df_mse$ADAM_ETS / df_mse$Naive),
+  ADAM_ETS_ARIMA = 1 - (df_mse$ADAM_ETS_ARIMA / df_mse$Naive),
+  SSARIMA        = 1 - (df_mse$SSARIMA / df_mse$Naive)
+)
+
+
+# R2 OOS par rapport à la prévision du modèle ARIMA 
+df_r2_modele_arima <- tibble(
+  Critere        = "R2_OOS modèle ARIMA",
+  Naive          = 1 - (df_mse$Naive / df_mse$ARIMA),
+  ARIMA          = NA,
+  Holt_Winters   = 1 - (df_mse$Holt_Winters / df_mse$ARIMA),
+  ADAM_ETS       = 1 - (df_mse$ADAM_ETS / df_mse$ARIMA),
+  ADAM_ETS_ARIMA = 1 - (df_mse$ADAM_ETS_ARIMA / df_mse$ARIMA),
+  SSARIMA        = 1 - (df_mse$SSARIMA / df_mse$ARIMA)
+)
+
+
+# Tableau récapitulatif des performances de prévision : MSE et R2 OOS
+df_mse_r2 <- bind_rows(
+  df_mse, 
+  df_r2_modele_naif, 
+  df_r2_modele_arima
+)
+
+df_mse_r2
+```
+
+## 5.3. Erreurs de prévision cumulées au carré (CSPE)
+
+```{r}
+# Erreurs de prévision au carré (SPE)
+df_spe <- tibble(
+  Date           = month(
+    cac40_prev$date, label = TRUE, locale = "fr_FR.UTF-8"
+  ),
+  Naive          = df_erreurs_prevision$Naive^2,
+  ARIMA          = df_erreurs_prevision$ARIMA^2,
+  Holt_Winters   = df_erreurs_prevision$Holt_Winters^2,
+  ADAM_ETS       = df_erreurs_prevision$ADAM_ETS^2,
+  ADAM_ETS_ARIMA = df_erreurs_prevision$ADAM_ETS_ARIMA^2,
+  SSARIMA        = df_erreurs_prevision$SSARIMA^2
+)
+
+df_spe
+
+
+# Erreurs de prévision cumulées au carré (CSPE)
+df_cspe <- df_spe |>
+  mutate(
+    Naive          = cumsum(Naive),
+    ARIMA          = cumsum(ARIMA),
+    Holt_Winters   = cumsum(Holt_Winters),
+    ADAM_ETS       = cumsum(ADAM_ETS),
+    ADAM_ETS_ARIMA = cumsum(ADAM_ETS_ARIMA),
+    SSARIMA        = cumsum(SSARIMA)
+  )
+
+df_cspe
+```
+
+```{r}
+# Vecteur couleurs pour les différents modèles
+couleurs_modeles <- c(
+  "Naive" = "#F4A300",
+  "ARIMA" = "#277DA1",
+  "Holt_Winters" = "#2A9D8F",
+  "ADAM_ETS" = "#E76F51",
+  "ADAM_ETS_ARIMA" = "#9D4EDD",
+  "SSARIMA" = "#F72585"
+)
+
+# Graphique de l'erreur quadratique cumulée pour chaque modèle
+df_cspe |> 
+  pivot_longer(
+    cols = -Date, 
+    names_to = "Modele", 
+    values_to = "CSPE"
+  ) |> 
+  ggplot() +
+  aes(
+    x = Date, 
+    y = CSPE, 
+    color = Modele,
+    group = Modele
+  ) +
+  geom_line(size = 1.2) +
+  labs(
+    x = "Date", 
+    y = "Erreur quadratique cumulée"
+  ) +
+  scale_color_manual(values = couleurs_modeles) +
+  theme_bw(base_size = 13) +
+  theme(legend.title = element_blank())
+```
+
+# 6. Test de précision
+
+```{r}
+# Tests DM : modèle vs prévision naïve (h = 1 car horizon = 1 par point)
+
+dm_arima <- dm.test(
+  df_erreurs_prevision$Naive,
+  df_erreurs_prevision$ARIMA,
+  alternative = "less",
+  h = 1
+)
+
+dm_hw <- dm.test(
+  df_erreurs_prevision$Naive,
+  df_erreurs_prevision$Holt_Winters,
+  alternative = "less",
+  h = 1
+)
+
+# dm_adam_ets <- dm.test(
+#   df_erreurs_prevision$Naive,
+#   df_erreurs_prevision$ADAM_ETS,
+#   alternative = "less",
+#   h = 1
+# )
+
+dm_adam_ets_arima <- dm.test(
+  df_erreurs_prevision$Naive,
+  df_erreurs_prevision$ADAM_ETS_ARIMA,
+  alternative = "less",
+  h = 1
+)
+
+dm_ssarima <- dm.test(
+  df_erreurs_prevision$Naive,
+  df_erreurs_prevision$SSARIMA, 
+  alternative = "less",
+  h = 1
+)
+```
+
+Les prévisions des modèles naïf et ADAM_ETS sont identiques sur l'ensemble de l'échantillon, produisant à chaque date exactement les mêmes valeurs. En conséquence, leurs erreurs de prévision sont strictement égales. Le test de Diebold-Mariano, qui évalue la performance relative de deux modèles en analysant la variance des différences d'erreurs, ne peut être appliqué ici : la variance étant nulle, aucune supériorité statistique ne peut être établie. C'est pourquoi le test n'a pas pu être réalisé entre les deux modèles.
+
+```{r}
+# p-value du test pour chacun des modèles
+
+df_dm_pvalue <- tibble(
+  ARIMA          = dm_arima$p.value,
+  Holt_Winters   = dm_hw$p.value,
+  ADAM_ETS       = NA,
+  ADAM_ETS_ARIMA = dm_adam_ets_arima$p.value,
+  SSARIMA        = dm_ssarima$p.value
+)
+
+df_dm_pvalue
+```
+
+# 7. Prévision à 1 pas du meilleur modèle de la question 6
+
+## 1. Prévision
+
+```{r}
+# Série complète avec toutes les observations
+cac40_complet <- ts(
+  c(log_cac40_ts, log_cac40_prev_ts), 
+  frequency = 12
+)
+
+# Nombre de mois pour l'estimation
+nb_estim <- 228
+
+# Nombre de mois pour la prévision
+nb_prev <- 12
+
+# Prévisions à 1 pas pour les 12 mois
+df_previsions_2019_un_pas <- map(1:nb_prev, function(i) {
+  
+  # Sélection des observations pour l'estimation
+  cac40_realisation <- cac40_complet[i:(nb_estim-1+i)]
+  
+  # Modèle ETS(ANN) + SARIMA(0,1,1)[12]
+  cac40_modele <- adam(
+    cac40_realisation,
+    model = "ANN",
+    lags = c(1, 12),
+    orders = list(
+      ar = c(0, 0),
+      i  = c(0, 1),
+      ma = c(0, 1)
+    ),
+    bounds = "admissible"
+  )
+  
+  # Prévision à 1 pas
+  cac40_prevision <- forecast(
+    cac40_modele, 
+    h = 1, 
+    level = 0.90
+  )
+  
+  # Résultats
+  tibble(
+    Date = month(cac40_prev$date, label = TRUE, locale = "fr_FR.UTF-8")[i], 
+    Prévision = cac40_prevision$mean, 
+    Réalisation = log(cac40_prev$cloture)[i]
+  )
+}) |> 
+  bind_rows()
+
+df_previsions_2019_un_pas
+```
+
+## 2. Graphique
+
+```{r}
+df_previsions_2019_un_pas |> 
+  pivot_longer(
+    cols = -Date, 
+    names_to = "Type", 
+    values_to = "Prediction"
+  ) |> 
+  ggplot() +
+  aes(
+    x = Date, 
+    y = Prediction, 
+    color = Type,
+    group = Type
+  ) +
+  geom_line(size = 1.2) +
+  labs(
+    x = "Date", 
+    y = "Valeur prédite"
+  ) +
+  scale_color_manual(
+    values = c("Prévision" = "red", "Réalisation" = "black")
+  ) +
+  theme_bw(base_size = 13) +
+  theme(legend.title = element_blank())
+```
