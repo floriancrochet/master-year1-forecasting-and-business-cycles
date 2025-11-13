@@ -100,19 +100,18 @@ For theoretical background:
 
 ## 📜 License
 This project is released under the **MIT License**.  
-© 2025 Florian Crochet & Pierre Quintin de Kercadio
+© 2025 Pierre Quintin de Kercadio and Florian Crochet
 
 ---
 
 ## 👤 Authors
-**Florian Crochet**  
-*Econometrics & Statistics Student — University of Rennes*  
-
 **Pierre Quintin de Kercadio**  
-*Econometrics & Statistics Student — University of Rennes*  
+[GitHub Profile](https://github.com/PierreQDK)  
 
-📫 > À compléter  
-🌐 > À compléter  
+**Florian Crochet**  
+[GitHub Profile](https://github.com/floriancrochet)
+
+*Master 1 – Econometrics & Statistics, Applied Econometrics Track* 
 
 ---
 
