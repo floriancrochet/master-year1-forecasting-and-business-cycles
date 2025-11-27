@@ -1,6 +1,8 @@
 # Forecasting the CAC 40 Index  
 *A short-term econometric forecasting study using linear time series models.*
 
+[**Report (PDF – online)**](https://drive.google.com/file/d/1uftsnjpQorkpySsfxc0_umaoKqosk75H/view?usp=drive_link)
+
 ---
 
 ## 📘 Overview
