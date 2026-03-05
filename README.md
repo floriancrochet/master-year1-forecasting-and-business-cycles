@@ -1,105 +1,123 @@
-# Forecasting the CAC 40 Index  
-*A short-term econometric forecasting study using linear time series models.*
+# Analysis of the Monthly Series of the CAC 40 Index Over the Period 2000-2018 and Forecast for the Year 2019  
+*This study forecasts the short-term dynamics of the CAC 40 index using linear time series models.*
+
+[**Report (PDF – online)**](https://drive.google.com/file/d/1uftsnjpQorkpySsfxc0_umaoKqosk75H/view?usp=drive_link)
 
 ---
 
-## 📘 Overview
-This project provides tools for **analyzing, modeling, and forecasting the monthly CAC 40 stock index** using econometric and statistical methods.  
-It was developed as part of the **Master’s program in Econometrics and Statistics (M1 ECAP, 2024–2025)** at the University of Rennes, focusing on **rigorous modeling, reproducibility, and analytical precision**.
-
+## 🎯 Overview
 **Objectives**
-- Identify the most efficient forecasting model for short-term financial dynamics  
-- Compare linear time series models under a unified statistical framework  
-- Evaluate forecast performance through formal accuracy tests and out-of-sample validation  
+- Identify the most efficient forecasting model for short-term financial dynamics
+- Compare linear time series models under a unified statistical framework
+- Evaluate forecast performance through formal accuracy tests and out-of-sample validation
+
+---
+
+## 🗄️ Data
+- **Source:** Yahoo Finance
+- **Time Period / Size:** January 2000 to December 2018 (Train), monthly
+- **Target Variable:** Log-transformed `close` price of CAC 40
+- **Preprocessing:** Logarithmic transformation, differencing, outlier correction
+- **Data Availability:** Publicly available via API
+
+---
+
+## 🧠 Methodology
+- **Theoretical Approach:** Linear time series modeling
+- **Mathematical Framework:** Box-Jenkins and state-space exponential smoothing
+- **Evaluation Strategy:** Out-of-sample forecasting and Diebold-Mariano testing
 
 ---
 
 ## ⚙️ Features
-- Data retrieval from Yahoo Finance (2000–2019, monthly frequency)  
-- Detection of outliers using the **RegARIMA X13** and **`tso`** methods  
-- Stationarity analysis via **ADF, PP, and KPSS** tests  
-- Estimation of **ARIMA, Holt–Winters, ADAM ETS, ADAM ETS + ARIMA, SSARIMA** models  
-- Model comparison using **AIC, AICc, MSE, R²<sub>OOS</sub>**, and the **Diebold–Mariano test**  
-- Forecast visualization and rolling one-month horizon prediction  
+- **Retrieve Data:** Fetch Yahoo Finance data (2000–2019, monthly frequency)
+- **Detect Outliers:** Identify structural breaks using the RegARIMA X13 and `tso` methods
+- **Analyze Stationarity:** Test series integration via `ADF`, `PP`, and `KPSS` tests
+- **Estimate Models:** Fit `ARIMA`, `Holt–Winters`, `ADAM ETS`, `ADAM ETS + ARIMA`, `SSARIMA` models
+- **Compare Models:** Evaluate fit using `AIC`, `AICc`, `MSE`, R²<sub>OOS</sub>, and the `Diebold–Mariano` test
+- **Visualize Forecast:** Predict trajectory with a rolling one-month horizon
 
 ---
 
 ## 🧰 Tech Stack
-**Language:** R  
-**Libraries:** `tidyquant`, `forecast`, `smooth`, `RJDemetra`, `urca`, `tseries`, `fBasics`, `ggplot2`
+- **Language:** R
+- **Data Engineering & Acquisition:** `tidyquant`
+- **Numerical Computing & Data Manipulation:** `fBasics`
+- **Time Series Analysis:** `forecast`, `smooth`, `RJDemetra`, `urca`, `tseries`
+- **Data Visualization:** `ggplot2`
+- **Reporting & Documentation:** Quarto
 
 ---
 
-## ⚙️ Installation
-Clone the repository and install dependencies:
+## 📦 Installation
 
 ```bash
-git clone https://github.com/<your-username>/forecast-cac40.git
+git clone https://github.com/floriancrochet/forecast-cac40.git
 cd forecast-cac40
-# In R:
-install.packages(c("tidyquant", "forecast", "smooth", "RJDemetra", "urca", "tseries", "fBasics", "ggplot2"))
+Rscript -e 'install.packages(c("tidyquant", "forecast", "smooth", "RJDemetra", "urca", "tseries", "fBasics", "ggplot2"))'
 ```
 
 ---
 
-## 📚 Usage Example
+## 💻 Usage Example
+
+### Reproducing the Analysis / Execution Pipeline
 
 ```r
 library(tidyquant)
 library(forecast)
 library(smooth)
 
-# Load CAC 40 data
 cac40 <- tq_get("^FCHI", from = "2000-01-01", to = "2018-12-31", periodicity = "monthly")
 
-# Transform and model
 log_cac40_ts <- ts(log(cac40$close), start = c(2000, 1), frequency = 12)
 model <- auto.arima(log_cac40_ts)
 forecast::forecast(model, h = 12)
 ```
 
-Additional scripts and detailed analysis are available in the `src/` and `notebooks/` folders.
-
 ---
 
 ## 📂 Project Structure
 
-```
-forecast-cac40/
+```text
+master-year1-forecasting-and-business-cycles/
 │
-├── data/               # Raw and processed data
-├── src/                # Source R scripts
-├── notebooks/          # Detailed analysis and model comparisons
-├── figures/            # Forecast visualizations
-├── report/             # Final academic dossier
-└── README.md
+├── report/                                               # Final academic dossier
+│   └── report.pdf                                        # Core econometric forecasting evaluation
+├── LICENSE                                               # Project license
+├── README.md                                             # Project documentation
+├── master-year1-forecasting-and-business-cycles.Rproj    # RStudio project file
+└── project.qmd                                           # Quarto source code
 ```
 
 ---
 
-## 📊 Results
-The **ADAM ETS + ARIMA** model achieved the best predictive accuracy:  
-- Lowest **AIC/AICc** among competing models  
-- Superior **out-of-sample R²<sub>OOS</sub>**  
-- Statistically significant improvement over naïve forecasts according to the **Diebold–Mariano test**
+## 📈 Results
 
-Example visualization:
+### Performance Metrics
+| Model | Complexity / Size | MSE | AICc |
+|-------|-------------------|-----|------|
+| Naive Baseline | Univariate | 0.0258 | NA |
+| **ADAM ETS + ARIMA** | **Univariate** | **0.0247** | **-766.7600** |
+| Holt-Winters | Univariate | 0.0906 | -1368.5300 |
 
-![Forecast Example](./figures/forecast_cac40.png)
+### Key Findings
+- **Optimal Predictive Model:** The `ADAM ETS + ARIMA` model demonstrated the best predictive accuracy on out-of-sample data.
+- **Comparative Superiority:** The model outperformed competing methods on the out-of-sample R²<sub>OOS</sub> metric.
+- **Statistical Significance:** The forecast failed to provide strict statistical significance over the naive baseline according to the Diebold–Mariano test.
 
 ---
 
-## 🧠 References
-For theoretical background:
-- Hyndman & Athanasopoulos, *Forecasting: Principles and Practice*  
-- Hamilton, *Time Series Analysis*  
+## 📚 References
 - Chen & Liu (1993), *Joint Estimation of Model Parameters and Outlier Effects*  
+- Hamilton, *Time Series Analysis*  
+- Hyndman & Athanasopoulos, *Forecasting: Principles and Practice*  
 - Wooldridge, *Introductory Econometrics: A Modern Approach*  
 
 ---
 
 ## 📜 License
-This project is released under the **MIT License**.  
+This project is released under the MIT License.  
 © 2025 Pierre Quintin de Kercadio and Florian Crochet
 
 ---
@@ -111,10 +129,9 @@ This project is released under the **MIT License**.
 **Florian Crochet**  
 [GitHub Profile](https://github.com/floriancrochet)
 
-*Master 1 – Econometrics & Statistics, Applied Econometrics Track* 
+*Master 1 – Econometrics & Statistics, Applied Econometrics Track*
 
 ---
 
-## 💬 Acknowledgments
-This work was conducted under the supervision of the **Techniques de Prévision et Conjoncture** module (M1 ECAP, 2024–2025).  
-We thank the open-source R community for the tools enabling transparent and replicable econometric analysis.
+## 🤝 Acknowledgments
+This work was conducted as part of the Forecasting and Business Cycles course, supervised by Mr. Olivier Darné.
