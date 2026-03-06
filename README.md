@@ -82,12 +82,13 @@ forecast::forecast(model, h = 12)
 ```text
 master-year1-forecasting-and-business-cycles/
 │
-├── report/                                               # Final academic dossier
-│   └── report.pdf                                        # Core econometric forecasting evaluation
-├── LICENSE                                               # Project license
-├── README.md                                             # Project documentation
-├── master-year1-forecasting-and-business-cycles.Rproj    # RStudio project file
-└── project.qmd                                           # Quarto source code
+├── report/
+│   └── report.pdf
+├── .gitignore
+├── LICENSE
+├── README.md
+├── master-year1-forecasting-and-business-cycles.Rproj
+└── project.qmd
 ```
 
 ---
